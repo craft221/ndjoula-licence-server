@@ -1,0 +1,60 @@
+const express = require('express')
+const cors = require('cors')
+const fs = require('fs')
+const path = require('path')
+const config = require('./config')
+const { pool, query } = require('./database/connection')
+
+const app = express()
+
+// Middleware
+app.use(cors())
+app.use(express.json())
+
+// Routes
+app.use('/api/health', require('./routes/health'))
+app.use('/api/licence', require('./routes/licence'))
+app.use('/api/payment', require('./routes/payment'))
+app.use('/api/admin', require('./routes/admin'))
+
+// Run migrations
+async function runMigrations() {
+  const migrationsDir = path.join(__dirname, 'database', 'migrations')
+  const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()
+
+  for (const file of files) {
+    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8')
+    try {
+      await query(sql)
+      console.log(`Migration ${file} appliquée`)
+    } catch (err) {
+      // Tables may already exist
+      if (!err.message.includes('already exists')) {
+        console.error(`Erreur migration ${file}:`, err.message)
+      }
+    }
+  }
+}
+
+// Start
+async function start() {
+  try {
+    // Test DB connection
+    await pool.query('SELECT 1')
+    console.log('PostgreSQL connecté')
+
+    // Run migrations
+    await runMigrations()
+
+    app.listen(config.port, () => {
+      console.log(`Serveur de licences démarré sur le port ${config.port}`)
+      console.log(`Mode: ${config.nodeEnv}`)
+      console.log(`PayDunya: ${config.paydunya.mode}`)
+    })
+  } catch (err) {
+    console.error('Erreur démarrage serveur:', err)
+    process.exit(1)
+  }
+}
+
+start()
