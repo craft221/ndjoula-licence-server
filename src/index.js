@@ -39,6 +39,21 @@ async function runMigrations() {
 // Start
 async function start() {
   try {
+    // Debug: show all env vars (masked)
+    console.log('=== DIAGNOSTIC DÉMARRAGE ===')
+    console.log('PORT:', process.env.PORT)
+    console.log('NODE_ENV:', process.env.NODE_ENV)
+    console.log('DATABASE_URL définie:', !!process.env.DATABASE_URL)
+    console.log('DATABASE_URL longueur:', (process.env.DATABASE_URL || '').length)
+    if (process.env.DATABASE_URL) {
+      const raw = process.env.DATABASE_URL
+      console.log('DATABASE_URL premiers 20 chars:', JSON.stringify(raw.substring(0, 20)))
+      console.log('DATABASE_URL derniers 10 chars:', JSON.stringify(raw.substring(raw.length - 10)))
+    }
+    console.log('API_SECRET défini:', !!process.env.API_SECRET)
+    console.log('PAYDUNYA_MODE:', process.env.PAYDUNYA_MODE)
+    console.log('=== FIN DIAGNOSTIC ===')
+
     // Test DB connection
     await pool.query('SELECT 1')
     console.log('PostgreSQL connecté')
