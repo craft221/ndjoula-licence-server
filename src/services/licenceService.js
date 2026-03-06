@@ -1,3 +1,4 @@
+const crypto = require('crypto')
 const { query } = require('../database/connection')
 const { generateKey } = require('../utils/generateKey')
 const config = require('../config')
@@ -79,7 +80,7 @@ async function validateLicence(licenceKey, machineId) {
   // Mettre à jour last_check_at
   await query('UPDATE licences SET last_check_at = NOW() WHERE id = $1', [licence.id])
 
-  return {
+  const response = {
     valid: true,
     licence: {
       id: licence.id,
@@ -89,6 +90,22 @@ async function validateLicence(licenceKey, machineId) {
       client_name: licence.client_name
     }
   }
+
+  // Signer la réponse avec ED25519 si la clé privée est configurée
+  if (config.licencePrivateKey) {
+    const payload = JSON.stringify({
+      l: licence.licence_key,
+      m: machineId,
+      s: licence.status,
+      e: licence.expiration_date,
+      t: new Date().toISOString()
+    })
+    const signature = crypto.sign(null, Buffer.from(payload), config.licencePrivateKey)
+    response.signed_payload = payload
+    response.signature = signature.toString('hex')
+  }
+
+  return response
 }
 
 async function getStatus(licenceKey) {

@@ -20,5 +20,8 @@ module.exports = {
   },
   licencePrice: parseInt(process.env.LICENCE_PRICE || '5000', 10),
   licenceDurationDays: parseInt(process.env.LICENCE_DURATION_DAYS || '30', 10),
-  serverUrl: process.env.SERVER_URL || 'http://localhost:3456'
+  serverUrl: process.env.SERVER_URL || 'http://localhost:3456',
+  licencePrivateKey: process.env.LICENCE_PRIVATE_KEY
+    ? Buffer.from(process.env.LICENCE_PRIVATE_KEY, 'base64').toString('utf-8')
+    : null
 }
