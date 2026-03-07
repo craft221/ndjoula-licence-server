@@ -7,6 +7,9 @@ const { pool, query } = require('./database/connection')
 
 const app = express()
 
+// Railway/Render utilisent un reverse proxy — nécessaire pour express-rate-limit
+app.set('trust proxy', 1)
+
 // Middleware
 app.use(cors())
 app.use(express.json())
