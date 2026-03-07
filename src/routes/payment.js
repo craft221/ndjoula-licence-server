@@ -39,20 +39,28 @@ router.post('/register', apiKeyAuth, paymentLimiter, async (req, res) => {
       [licence.id, invoice.token, config.licencePrice, payment_method, phone]
     )
 
-    // Déclencher le SoftPay
+    // Déclencher le SoftPay (paiement direct via mobile money)
     let softPayResult = null
+    let softPayFailed = false
     try {
       softPayResult = await paydunyaService.softPay(invoice.token, payment_method, phone)
     } catch (spErr) {
       console.error('Erreur SoftPay:', spErr.message)
+      softPayFailed = true
     }
+
+    // Toujours fournir une URL de paiement (SoftPay ou fallback facture)
+    const paymentUrl = softPayResult?.payment_url || invoice.url || null
 
     res.json({
       success: true,
       licence_key: licence.licence_key,
       token: invoice.token,
-      payment_url: softPayResult?.payment_url || invoice.url || null,
-      message: 'Licence créée. Veuillez compléter le paiement.'
+      payment_url: paymentUrl,
+      softpay_failed: softPayFailed,
+      message: softPayFailed
+        ? 'Licence créée. Le paiement direct a échoué, utilisez le lien de paiement.'
+        : 'Licence créée. Veuillez compléter le paiement.'
     })
   } catch (err) {
     console.error('Erreur register:', err)
@@ -92,20 +100,26 @@ router.post('/initiate', apiKeyAuth, paymentLimiter, async (req, res) => {
       [licence.id, invoice.token, config.licencePrice, payment_method, phone]
     )
 
-    // Déclencher le SoftPay
+    // Déclencher le SoftPay (paiement direct via mobile money)
     let softPayResult = null
+    let softPayFailed = false
     try {
       softPayResult = await paydunyaService.softPay(invoice.token, payment_method, phone)
     } catch (spErr) {
       console.error('Erreur SoftPay:', spErr.message)
-      // Le SoftPay peut échouer — le client peut toujours payer via l'URL
+      softPayFailed = true
     }
+
+    const paymentUrl = softPayResult?.payment_url || invoice.url || null
 
     res.json({
       success: true,
       token: invoice.token,
-      payment_url: softPayResult?.payment_url || invoice.url || null,
-      message: 'Facture créée. Veuillez compléter le paiement.'
+      payment_url: paymentUrl,
+      softpay_failed: softPayFailed,
+      message: softPayFailed
+        ? 'Le paiement direct a échoué, utilisez le lien de paiement.'
+        : 'Facture créée. Veuillez compléter le paiement.'
     })
   } catch (err) {
     console.error('Erreur initiation paiement:', err)
