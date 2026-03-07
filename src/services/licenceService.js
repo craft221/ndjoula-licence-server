@@ -37,7 +37,7 @@ async function getAllLicences() {
   return result.rows
 }
 
-async function validateLicence(licenceKey, machineId) {
+async function validateLicence(licenceKey, phoneOrMachineId) {
   const licence = await getLicenceByKey(licenceKey)
   if (!licence) {
     return { valid: false, reason: 'Clé de licence invalide' }
@@ -67,14 +67,21 @@ async function validateLicence(licenceKey, machineId) {
     }
   }
 
-  // Vérifier machine_id binding
-  if (licence.machine_id && licence.machine_id !== machineId) {
-    return { valid: false, reason: 'Cette licence est liée à une autre machine.' }
+  // Normaliser le numéro de téléphone pour la comparaison
+  const normalizedPhone = normalizePhone(phoneOrMachineId)
+
+  // Vérifier le binding par téléphone du patron
+  // On compare avec le champ phone de la licence (le numéro du patron)
+  if (licence.phone && normalizedPhone) {
+    const licencePhone = normalizePhone(licence.phone)
+    if (licencePhone && licencePhone !== normalizedPhone) {
+      return { valid: false, reason: 'Cette licence est liée à un autre compte.' }
+    }
   }
 
-  // Bind machine_id au premier appel
-  if (!licence.machine_id) {
-    await query('UPDATE licences SET machine_id = $1 WHERE id = $2', [machineId, licence.id])
+  // Bind le téléphone au premier appel si pas encore défini
+  if (!licence.phone && normalizedPhone) {
+    await query('UPDATE licences SET phone = $1 WHERE id = $2', [normalizedPhone, licence.id])
   }
 
   // Mettre à jour last_check_at
@@ -92,10 +99,11 @@ async function validateLicence(licenceKey, machineId) {
   }
 
   // Signer la réponse avec ED25519 si la clé privée est configurée
+  // payload.m = phone du patron (au lieu de machine_id)
   if (config.licencePrivateKey) {
     const payload = JSON.stringify({
       l: licence.licence_key,
-      m: machineId,
+      m: normalizedPhone || licence.phone,
       s: licence.status,
       e: licence.expiration_date,
       t: new Date().toISOString()
@@ -106,6 +114,12 @@ async function validateLicence(licenceKey, machineId) {
   }
 
   return response
+}
+
+// Normalise un numéro de téléphone : garde uniquement les chiffres et le +
+function normalizePhone(phone) {
+  if (!phone) return ''
+  return phone.replace(/[\s\-().]/g, '')
 }
 
 async function getStatus(licenceKey) {
@@ -166,7 +180,6 @@ async function updateLicence(id, data) {
   if (data.client_name !== undefined) { fields.push(`client_name = $${idx++}`); values.push(data.client_name) }
   if (data.phone !== undefined) { fields.push(`phone = $${idx++}`); values.push(data.phone) }
   if (data.status !== undefined) { fields.push(`status = $${idx++}`); values.push(data.status) }
-  if (data.machine_id !== undefined) { fields.push(`machine_id = $${idx++}`); values.push(data.machine_id) }
 
   if (fields.length === 0) return getLicenceById(id)
 

@@ -10,24 +10,19 @@ const router = Router()
 
 /**
  * POST /api/payment/register
- * Body: { client_name, phone, payment_method, machine_id }
- * Crée une licence + lance le paiement en une seule étape
+ * Body: { client_name, phone, payment_method }
+ * Crée une licence liée au téléphone du patron + lance le paiement
  * Le client n'a pas besoin d'une clé pré-existante
  */
 router.post('/register', apiKeyAuth, paymentLimiter, async (req, res) => {
   try {
-    const { client_name, phone, payment_method, machine_id } = req.body
+    const { client_name, phone, payment_method } = req.body
     if (!client_name || !phone || !payment_method) {
       return res.status(400).json({ error: 'client_name, phone et payment_method requis' })
     }
 
-    // Créer la licence (statut pending)
+    // Créer la licence (statut pending, liée au phone du patron)
     const licence = await licenceService.createLicence({ client_name, phone })
-
-    // Lier la machine_id si fourni
-    if (machine_id) {
-      await licenceService.updateLicence(licence.id, { machine_id })
-    }
 
     // Créer la facture PayDunya
     const invoice = await paydunyaService.createInvoice({

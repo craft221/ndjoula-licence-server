@@ -10,17 +10,18 @@ router.use(apiLimiter)
 
 /**
  * POST /api/licence/validate
- * Body: { licence_key, machine_id }
- * Valide une clé de licence et lie au machine_id au premier appel
+ * Body: { licence_key, phone } (ou { licence_key, machine_id } pour rétrocompat)
+ * Valide une clé de licence et lie au téléphone du patron
  */
 router.post('/validate', async (req, res) => {
   try {
-    const { licence_key, machine_id } = req.body
-    if (!licence_key || !machine_id) {
-      return res.status(400).json({ valid: false, reason: 'licence_key et machine_id requis' })
+    const { licence_key, phone, machine_id } = req.body
+    const identifier = phone || machine_id
+    if (!licence_key || !identifier) {
+      return res.status(400).json({ valid: false, reason: 'licence_key et phone requis' })
     }
 
-    const result = await licenceService.validateLicence(licence_key, machine_id)
+    const result = await licenceService.validateLicence(licence_key, identifier)
     res.json(result)
   } catch (err) {
     console.error('Erreur validation licence:', err)
