@@ -46,4 +46,45 @@ router.get('/status/:key', async (req, res) => {
   }
 })
 
+/**
+ * POST /api/licence/find-by-phone
+ * Body: { phone }
+ * Cherche une licence active liée à ce numéro de téléphone
+ * Utilisé quand un patron se connecte sur un nouvel appareil
+ */
+router.post('/find-by-phone', async (req, res) => {
+  try {
+    const { phone } = req.body
+    if (!phone) {
+      return res.status(400).json({ found: false, reason: 'phone requis' })
+    }
+
+    const licence = await licenceService.findByPhone(phone)
+    if (!licence) {
+      return res.json({ found: false })
+    }
+
+    // Vérifier expiration
+    if (licence.expiration_date && new Date(licence.expiration_date) < new Date()) {
+      return res.json({
+        found: true,
+        expired: true,
+        licence_key: licence.licence_key,
+        expiration_date: licence.expiration_date
+      })
+    }
+
+    return res.json({
+      found: true,
+      expired: false,
+      licence_key: licence.licence_key,
+      expiration_date: licence.expiration_date,
+      client_name: licence.client_name
+    })
+  } catch (err) {
+    console.error('Erreur find-by-phone:', err)
+    res.status(500).json({ found: false, reason: 'Erreur serveur' })
+  }
+})
+
 module.exports = router

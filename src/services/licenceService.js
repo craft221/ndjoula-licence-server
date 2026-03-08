@@ -232,6 +232,29 @@ async function getStats() {
   }
 }
 
+async function findByPhone(phone) {
+  const normalizedPhone = normalizePhone(phone)
+  if (!normalizedPhone) return null
+
+  // Chercher la licence active la plus récente pour ce numéro
+  const result = await query(
+    `SELECT * FROM licences
+     WHERE phone = $1 AND status = 'active'
+     ORDER BY expiration_date DESC LIMIT 1`,
+    [normalizedPhone]
+  )
+  if (result.rows[0]) return result.rows[0]
+
+  // Essayer aussi avec le numéro tel quel (sans normalisation)
+  const result2 = await query(
+    `SELECT * FROM licences
+     WHERE phone = $1 AND status = 'active'
+     ORDER BY expiration_date DESC LIMIT 1`,
+    [phone]
+  )
+  return result2.rows[0] || null
+}
+
 module.exports = {
   createLicence,
   getLicenceByKey,
@@ -241,5 +264,6 @@ module.exports = {
   getStatus,
   activateLicence,
   updateLicence,
-  getStats
+  getStats,
+  findByPhone
 }
