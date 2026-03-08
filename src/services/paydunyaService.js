@@ -111,11 +111,17 @@ async function checkInvoiceStatus(token) {
  * PayDunya envoie un hash SHA-512 du master_key
  */
 function verifyIPNHash(receivedHash) {
+  if (!config.paydunya.masterKey) return false
   const expectedHash = crypto
     .createHash('sha512')
     .update(config.paydunya.masterKey)
     .digest('hex')
-  return receivedHash === expectedHash
+  if (!receivedHash || receivedHash.length !== expectedHash.length) return false
+  try {
+    return crypto.timingSafeEqual(Buffer.from(receivedHash, 'utf8'), Buffer.from(expectedHash, 'utf8'))
+  } catch {
+    return false
+  }
 }
 
 module.exports = {

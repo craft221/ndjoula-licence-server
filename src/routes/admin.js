@@ -1,10 +1,12 @@
 const { Router } = require('express')
 const licenceService = require('../services/licenceService')
 const { adminAuth } = require('../middleware/adminAuth')
+const { apiLimiter } = require('../middleware/rateLimiter')
 
 const router = Router()
 
 router.use(adminAuth)
+router.use(apiLimiter)
 
 /**
  * POST /api/admin/licences

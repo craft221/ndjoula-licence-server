@@ -11,8 +11,12 @@ const app = express()
 app.set('trust proxy', 1)
 
 // Middleware
-app.use(cors())
-app.use(express.json())
+app.use(cors({
+  origin: config.nodeEnv === 'production'
+    ? [config.serverUrl]
+    : true
+}))
+app.use(express.json({ limit: '10kb' }))
 
 // Routes
 app.use('/api/health', require('./routes/health'))

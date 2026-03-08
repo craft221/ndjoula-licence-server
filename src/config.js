@@ -1,5 +1,17 @@
 require('dotenv').config()
 
+// Refuser de démarrer en production avec les secrets par défaut
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.API_SECRET || process.env.API_SECRET === 'dev-secret') {
+    console.error('FATAL: API_SECRET non défini ou valeur par défaut en production!')
+    process.exit(1)
+  }
+  if (!process.env.ADMIN_TOKEN || process.env.ADMIN_TOKEN === 'dev-admin-token') {
+    console.error('FATAL: ADMIN_TOKEN non défini ou valeur par défaut en production!')
+    process.exit(1)
+  }
+}
+
 module.exports = {
   port: process.env.PORT || 3456,
   nodeEnv: process.env.NODE_ENV || 'development',

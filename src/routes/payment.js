@@ -1,5 +1,5 @@
 const { Router } = require('express')
-const { query } = require('../database/connection')
+const { query, getClient } = require('../database/connection')
 const licenceService = require('../services/licenceService')
 const paydunyaService = require('../services/paydunyaService')
 const { apiKeyAuth } = require('../middleware/auth')
@@ -149,34 +149,64 @@ router.post('/webhook', webhookLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Token manquant' })
     }
 
-    // Trouver le paiement en DB
-    const paymentResult = await query(
-      'SELECT * FROM payments WHERE paydunya_token = $1',
-      [token]
-    )
-    const payment = paymentResult.rows[0]
-    if (!payment) {
-      console.error('Webhook: paiement non trouvé pour token', token)
-      return res.status(404).json({ error: 'Paiement non trouvé' })
-    }
+    // Utiliser une transaction avec SELECT FOR UPDATE pour éviter la double activation
+    const client = await getClient()
+    try {
+      await client.query('BEGIN')
 
-    if (status === 'completed') {
-      // Mettre à jour le paiement
-      await query(
-        `UPDATE payments SET status = 'completed', completed_at = NOW(), paydunya_data = $1
-         WHERE id = $2`,
-        [JSON.stringify(data), payment.id]
+      const paymentResult = await client.query(
+        'SELECT * FROM payments WHERE paydunya_token = $1 FOR UPDATE',
+        [token]
       )
+      const payment = paymentResult.rows[0]
+      if (!payment) {
+        await client.query('ROLLBACK')
+        console.error('Webhook: paiement non trouvé pour token', token)
+        return res.status(404).json({ error: 'Paiement non trouvé' })
+      }
 
-      // Activer/renouveler la licence
-      await licenceService.activateLicence(payment.licence_id, config.licenceDurationDays)
+      // Idempotency: si déjà complété, ne pas re-activer
+      if (payment.status === 'completed') {
+        await client.query('COMMIT')
+        return res.json({ success: true })
+      }
 
-      console.log(`Licence ${payment.licence_id} activée via webhook`)
-    } else if (status === 'failed' || status === 'cancelled') {
-      await query(
-        `UPDATE payments SET status = $1, paydunya_data = $2 WHERE id = $3`,
-        [status, JSON.stringify(data), payment.id]
-      )
+      if (status === 'completed') {
+        // Vérifier le montant payé
+        const paidAmount = invoiceData.total_amount || data.total_amount
+        if (paidAmount != null && parseInt(paidAmount, 10) < payment.amount) {
+          console.error(`Webhook: montant insuffisant (reçu ${paidAmount}, attendu ${payment.amount})`)
+          await client.query('ROLLBACK')
+          return res.status(400).json({ error: 'Montant insuffisant' })
+        }
+
+        // Mettre à jour le paiement
+        await client.query(
+          `UPDATE payments SET status = 'completed', completed_at = NOW(), paydunya_data = $1
+           WHERE id = $2`,
+          [JSON.stringify(data), payment.id]
+        )
+
+        await client.query('COMMIT')
+
+        // Activer/renouveler la licence (hors transaction, idempotent)
+        await licenceService.activateLicence(payment.licence_id, config.licenceDurationDays)
+
+        console.log(`Licence ${payment.licence_id} activée via webhook`)
+      } else if (status === 'failed' || status === 'cancelled') {
+        await client.query(
+          `UPDATE payments SET status = $1, paydunya_data = $2 WHERE id = $3`,
+          [status, JSON.stringify(data), payment.id]
+        )
+        await client.query('COMMIT')
+      } else {
+        await client.query('COMMIT')
+      }
+    } catch (txErr) {
+      await client.query('ROLLBACK')
+      throw txErr
+    } finally {
+      client.release()
     }
 
     res.json({ success: true })
@@ -204,16 +234,36 @@ router.get('/status/:token', apiKeyAuth, async (req, res) => {
       return res.status(404).json({ error: 'Paiement non trouvé' })
     }
 
-    // Si toujours pending, vérifier chez PayDunya
+    // Si toujours pending, vérifier chez PayDunya avec transaction pour éviter double activation
     if (payment.status === 'pending') {
       try {
         const paydunyaStatus = await paydunyaService.checkInvoiceStatus(token)
         if (paydunyaStatus.status === 'completed') {
-          await query(
-            `UPDATE payments SET status = 'completed', completed_at = NOW(), paydunya_data = $1 WHERE id = $2`,
-            [JSON.stringify(paydunyaStatus.data), payment.id]
-          )
-          await licenceService.activateLicence(payment.licence_id, config.licenceDurationDays)
+          const client = await getClient()
+          try {
+            await client.query('BEGIN')
+            const freshResult = await client.query(
+              'SELECT * FROM payments WHERE id = $1 FOR UPDATE',
+              [payment.id]
+            )
+            const freshPayment = freshResult.rows[0]
+            // Idempotency: si déjà complété entre-temps (webhook), ne pas re-activer
+            if (freshPayment && freshPayment.status !== 'completed') {
+              await client.query(
+                `UPDATE payments SET status = 'completed', completed_at = NOW(), paydunya_data = $1 WHERE id = $2`,
+                [JSON.stringify(paydunyaStatus.data), payment.id]
+              )
+              await client.query('COMMIT')
+              await licenceService.activateLicence(payment.licence_id, config.licenceDurationDays)
+            } else {
+              await client.query('COMMIT')
+            }
+          } catch (txErr) {
+            await client.query('ROLLBACK')
+            throw txErr
+          } finally {
+            client.release()
+          }
           payment.status = 'completed'
         }
       } catch (checkErr) {

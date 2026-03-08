@@ -179,7 +179,13 @@ async function updateLicence(id, data) {
 
   if (data.client_name !== undefined) { fields.push(`client_name = $${idx++}`); values.push(data.client_name) }
   if (data.phone !== undefined) { fields.push(`phone = $${idx++}`); values.push(data.phone) }
-  if (data.status !== undefined) { fields.push(`status = $${idx++}`); values.push(data.status) }
+  if (data.status !== undefined) {
+    const VALID_STATUSES = ['pending', 'active', 'expired', 'suspended']
+    if (!VALID_STATUSES.includes(data.status)) {
+      throw new Error(`Statut invalide: ${data.status}`)
+    }
+    fields.push(`status = $${idx++}`); values.push(data.status)
+  }
 
   if (fields.length === 0) return getLicenceById(id)
 

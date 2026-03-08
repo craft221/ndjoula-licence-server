@@ -22,16 +22,26 @@ function apiKeyAuth(req, res, next) {
     }
 
     const expected = crypto.createHmac('sha256', config.apiSecret).update(timestamp).digest('hex')
-    if (crypto.timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(expected, 'hex'))) {
-      return next()
-    }
+    try {
+      const sigBuf = Buffer.from(signature, 'hex')
+      const expBuf = Buffer.from(expected, 'hex')
+      if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
+        return next()
+      }
+    } catch { /* invalid hex, fall through */ }
     return res.status(401).json({ error: 'Signature invalide' })
   }
 
   // Mode 2 : API Key directe (rétrocompat anciennes versions)
   const apiKey = req.headers['x-api-key']
-  if (apiKey && apiKey === config.apiSecret) {
-    return next()
+  if (apiKey) {
+    try {
+      const keyBuf = Buffer.from(apiKey, 'utf8')
+      const expectedBuf = Buffer.from(config.apiSecret, 'utf8')
+      if (keyBuf.length === expectedBuf.length && crypto.timingSafeEqual(keyBuf, expectedBuf)) {
+        return next()
+      }
+    } catch { /* fall through to 401 */ }
   }
 
   return res.status(401).json({ error: 'Authentification requise' })
