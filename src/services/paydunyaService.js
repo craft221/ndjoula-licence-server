@@ -75,11 +75,11 @@ const SOFTPAY_ENDPOINTS = {
 
   // Mali (ML)
   'ML_orange_money':   '/softpay/orange-money-mali',
-  'ML_moov':           '/softpay/moov-ml',
+  'ML_moov':           '/softpay/moov-mali',
 
   // Burkina Faso (BF)
   'BF_orange_money':   '/softpay/orange-money-burkina',
-  'BF_moov':           '/softpay/moov-burkina-faso',
+  'BF_moov':           '/softpay/moov-burkina',
 
   // Togo (TG)
   'TG_t_money':        '/softpay/t-money-togo',
@@ -88,6 +88,9 @@ const SOFTPAY_ENDPOINTS = {
   // Bénin (BJ)
   'BJ_mtn':            '/softpay/mtn-benin',
   'BJ_moov':           '/softpay/moov-benin',
+
+  // Cameroun (CM)
+  'CM_mtn':            '/softpay/mtn-cameroun',
 }
 
 /**
@@ -100,6 +103,7 @@ const METHODS_BY_COUNTRY = {
   BF: ['orange_money', 'moov'],
   TG: ['t_money', 'moov'],
   BJ: ['mtn', 'moov'],
+  CM: ['mtn'],
 }
 
 function getAvailableMethods(countryCode) {
