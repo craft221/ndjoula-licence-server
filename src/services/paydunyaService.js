@@ -55,17 +55,73 @@ async function createInvoice({ licenceKey, clientName, phone, amount }) {
 }
 
 /**
- * SoftPay — déclencher le paiement selon la méthode
+ * Endpoints SoftPay par pays et méthode de paiement
+ * Clé: "{country_code}_{method}" ou "{method}" (fallback Sénégal)
  */
-async function softPay(token, method, phone) {
-  const endpoints = {
-    wave: '/softpay/wave-senegal',
-    orange_money: '/softpay/new-orange-money-senegal',
-    free_money: '/softpay/free-money-senegal'
-  }
+const SOFTPAY_ENDPOINTS = {
+  // Sénégal (SN) — défaut
+  'wave':              '/softpay/wave-senegal',
+  'SN_wave':           '/softpay/wave-senegal',
+  'SN_orange_money':   '/softpay/new-orange-money-senegal',
+  'SN_free_money':     '/softpay/free-money-senegal',
+  'orange_money':      '/softpay/new-orange-money-senegal',
+  'free_money':        '/softpay/free-money-senegal',
 
-  const endpoint = endpoints[method]
-  if (!endpoint) throw new Error(`Méthode de paiement non supportée: ${method}`)
+  // Côte d'Ivoire (CI)
+  'CI_wave':           '/softpay/wave-ci',
+  'CI_orange_money':   '/softpay/orange-money-ci',
+  'CI_mtn':            '/softpay/mtn-ci',
+  'CI_moov':           '/softpay/moov-ci',
+
+  // Mali (ML)
+  'ML_orange_money':   '/softpay/orange-money-mali',
+  'ML_moov':           '/softpay/moov-ml',
+
+  // Burkina Faso (BF)
+  'BF_orange_money':   '/softpay/orange-money-burkina',
+  'BF_moov':           '/softpay/moov-burkina-faso',
+
+  // Togo (TG)
+  'TG_t_money':        '/softpay/t-money-togo',
+  'TG_moov':           '/softpay/moov-togo',
+
+  // Bénin (BJ)
+  'BJ_mtn':            '/softpay/mtn-benin',
+  'BJ_moov':           '/softpay/moov-benin',
+}
+
+/**
+ * Méthodes disponibles par pays
+ */
+const METHODS_BY_COUNTRY = {
+  SN: ['wave', 'orange_money', 'free_money'],
+  CI: ['wave', 'orange_money', 'mtn', 'moov'],
+  ML: ['orange_money', 'moov'],
+  BF: ['orange_money', 'moov'],
+  TG: ['t_money', 'moov'],
+  BJ: ['mtn', 'moov'],
+}
+
+function getAvailableMethods(countryCode) {
+  return METHODS_BY_COUNTRY[countryCode] || METHODS_BY_COUNTRY['SN']
+}
+
+/**
+ * SoftPay — déclencher le paiement selon la méthode et le pays
+ * @param {string} token - Invoice token
+ * @param {string} method - Payment method (wave, orange_money, free_money, mtn, moov, t_money)
+ * @param {string} phone - Customer phone number
+ * @param {string} [countryCode] - ISO country code (SN, CI, ML, BF, TG, BJ). Defaults to SN.
+ */
+async function softPay(token, method, phone, countryCode) {
+  const country = countryCode || 'SN'
+
+  // Try country-specific endpoint first, then generic fallback
+  const endpoint = SOFTPAY_ENDPOINTS[`${country}_${method}`] || SOFTPAY_ENDPOINTS[method]
+  if (!endpoint) {
+    const available = getAvailableMethods(country)
+    throw new Error(`Méthode "${method}" non disponible pour ${country}. Disponibles: ${available.join(', ')}`)
+  }
 
   const payload = {
     invoice_token: token,
@@ -128,5 +184,7 @@ module.exports = {
   createInvoice,
   softPay,
   checkInvoiceStatus,
-  verifyIPNHash
+  verifyIPNHash,
+  getAvailableMethods,
+  METHODS_BY_COUNTRY
 }

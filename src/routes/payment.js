@@ -9,14 +9,23 @@ const config = require('../config')
 const router = Router()
 
 /**
+ * GET /api/payment/methods/:countryCode
+ * Retourne les méthodes de paiement disponibles pour un pays
+ */
+router.get('/methods/:countryCode', apiKeyAuth, (req, res) => {
+  const methods = paydunyaService.getAvailableMethods(req.params.countryCode)
+  res.json({ country: req.params.countryCode, methods })
+})
+
+/**
  * POST /api/payment/register
- * Body: { client_name, phone, payment_method }
+ * Body: { client_name, phone, payment_method, country_code? }
  * Crée une licence liée au téléphone du patron + lance le paiement
  * Le client n'a pas besoin d'une clé pré-existante
  */
 router.post('/register', apiKeyAuth, paymentLimiter, async (req, res) => {
   try {
-    const { client_name, phone, payment_method } = req.body
+    const { client_name, phone, payment_method, country_code } = req.body
     if (!client_name || !phone || !payment_method) {
       return res.status(400).json({ error: 'client_name, phone et payment_method requis' })
     }
@@ -43,7 +52,7 @@ router.post('/register', apiKeyAuth, paymentLimiter, async (req, res) => {
     let softPayResult = null
     let softPayFailed = false
     try {
-      softPayResult = await paydunyaService.softPay(invoice.token, payment_method, phone)
+      softPayResult = await paydunyaService.softPay(invoice.token, payment_method, phone, country_code)
     } catch (spErr) {
       console.error('Erreur SoftPay:', spErr.message)
       softPayFailed = true
@@ -75,7 +84,7 @@ router.post('/register', apiKeyAuth, paymentLimiter, async (req, res) => {
  */
 router.post('/initiate', apiKeyAuth, paymentLimiter, async (req, res) => {
   try {
-    const { licence_key, payment_method, phone } = req.body
+    const { licence_key, payment_method, phone, country_code } = req.body
     if (!licence_key || !payment_method || !phone) {
       return res.status(400).json({ error: 'licence_key, payment_method et phone requis' })
     }
@@ -104,7 +113,7 @@ router.post('/initiate', apiKeyAuth, paymentLimiter, async (req, res) => {
     let softPayResult = null
     let softPayFailed = false
     try {
-      softPayResult = await paydunyaService.softPay(invoice.token, payment_method, phone)
+      softPayResult = await paydunyaService.softPay(invoice.token, payment_method, phone, country_code)
     } catch (spErr) {
       console.error('Erreur SoftPay:', spErr.message)
       softPayFailed = true
