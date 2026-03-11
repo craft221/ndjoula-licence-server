@@ -4,6 +4,7 @@ const { generateKey } = require('../utils/generateKey')
 const config = require('../config')
 
 async function createLicence({ client_name, phone }) {
+  const normalizedPhone = phone ? normalizePhone(phone) : ''
   // Retry en cas de collision de clé (très rare)
   for (let attempt = 0; attempt < 5; attempt++) {
     const key = generateKey()
@@ -12,7 +13,7 @@ async function createLicence({ client_name, phone }) {
         `INSERT INTO licences (licence_key, client_name, phone, status)
          VALUES ($1, $2, $3, 'pending')
          RETURNING *`,
-        [key, client_name || '', phone || '']
+        [key, client_name || '', normalizedPhone]
       )
       return result.rows[0]
     } catch (err) {
@@ -71,11 +72,15 @@ async function validateLicence(licenceKey, phoneOrMachineId) {
   const normalizedPhone = normalizePhone(phoneOrMachineId)
 
   // Vérifier le binding par téléphone du patron
-  // On compare avec le champ phone de la licence (le numéro du patron)
+  // On compare les versions normalisées pour éviter les faux rejets (+221xx vs 221xx vs xx)
   if (licence.phone && normalizedPhone) {
-    const licencePhone = normalizePhone(licence.phone)
-    if (licencePhone && licencePhone !== normalizedPhone) {
+    const licencePhoneNorm = normalizePhone(licence.phone)
+    if (licencePhoneNorm && licencePhoneNorm !== normalizedPhone) {
       return { valid: false, reason: 'Cette licence est liée à un autre compte.' }
+    }
+    // Mettre à jour le numéro vers le format normalisé si différent
+    if (licence.phone !== normalizedPhone) {
+      await query('UPDATE licences SET phone = $1 WHERE id = $2', [normalizedPhone, licence.id])
     }
   }
 
@@ -116,10 +121,24 @@ async function validateLicence(licenceKey, phoneOrMachineId) {
   return response
 }
 
-// Normalise un numéro de téléphone : garde uniquement les chiffres et le +
+// Préfixes téléphoniques par pays supportés
+const COUNTRY_PREFIXES = ['221', '225', '237', '223', '224', '226', '228', '229', '33']
+
+// Normalise un numéro de téléphone vers le format +XXX...
+// Gère: +221785993392, 221785993392, 785993392 → +221785993392
 function normalizePhone(phone) {
   if (!phone) return ''
-  return phone.replace(/[\s\-().]/g, '')
+  // Retirer espaces, tirets, parenthèses, points
+  let cleaned = phone.replace(/[\s\-().]/g, '')
+  // Retirer le + initial pour travailler avec les chiffres
+  if (cleaned.startsWith('+')) cleaned = cleaned.substring(1)
+  // Si le numéro commence par un préfixe pays connu, ajouter +
+  for (const prefix of COUNTRY_PREFIXES) {
+    if (cleaned.startsWith(prefix)) return '+' + cleaned
+  }
+  // Sinon c'est un numéro local → ajouter +221 par défaut (Sénégal)
+  if (cleaned.length >= 7 && cleaned.length <= 10) return '+221' + cleaned
+  return '+' + cleaned
 }
 
 async function getStatus(licenceKey) {
@@ -236,25 +255,27 @@ async function findByPhone(phone) {
   const normalizedPhone = normalizePhone(phone)
   if (!normalizedPhone) return null
 
-  // Chercher la licence la plus récente pour ce numéro (active prioritaire, puis expirée)
+  // Générer les variantes possibles du numéro pour matcher les anciens formats
+  // Ex: +221785993392 → ['+221785993392', '221785993392', '785993392']
+  const variants = new Set([normalizedPhone, phone])
+  const digits = normalizedPhone.replace(/^\+/, '')
+  variants.add(digits) // sans le +
+  for (const prefix of COUNTRY_PREFIXES) {
+    if (digits.startsWith(prefix)) {
+      variants.add(digits.substring(prefix.length)) // numéro local seul
+    }
+  }
+
+  // Chercher la licence la plus récente pour toutes les variantes
+  const placeholders = Array.from(variants).map((_, i) => `$${i + 1}`).join(', ')
   const result = await query(
     `SELECT * FROM licences
-     WHERE phone = $1 AND status IN ('active', 'expired')
+     WHERE phone IN (${placeholders}) AND status IN ('active', 'expired')
      ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, expiration_date DESC
      LIMIT 1`,
-    [normalizedPhone]
+    Array.from(variants)
   )
-  if (result.rows[0]) return result.rows[0]
-
-  // Essayer aussi avec le numéro tel quel (sans normalisation)
-  const result2 = await query(
-    `SELECT * FROM licences
-     WHERE phone = $1 AND status IN ('active', 'expired')
-     ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, expiration_date DESC
-     LIMIT 1`,
-    [phone]
-  )
-  return result2.rows[0] || null
+  return result.rows[0] || null
 }
 
 module.exports = {
