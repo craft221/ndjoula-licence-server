@@ -16,7 +16,7 @@ if (dbUrl) {
       database: url.pathname.replace('/', ''),
       user: decodeURIComponent(url.username),
       password: decodeURIComponent(url.password),
-      ssl: { rejectUnauthorized: false },
+      ssl: { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' },
       connectionTimeoutMillis: 10000,
       // Force IPv4 lookup
       lookup: (hostname, options, callback) => {
@@ -29,7 +29,7 @@ if (dbUrl) {
     console.log('DB config: host=' + url.hostname + ', port=' + (url.port || 5432) + ', db=' + url.pathname.replace('/', ''))
   } catch (e) {
     console.error('DATABASE_URL invalide:', e.message)
-    poolConfig = { connectionString: dbUrl, ssl: { rejectUnauthorized: false } }
+    poolConfig = { connectionString: dbUrl, ssl: { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' } }
   }
 } else {
   console.error('ERREUR: DATABASE_URL non définie!')
