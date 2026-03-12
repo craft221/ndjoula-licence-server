@@ -2,10 +2,11 @@ const crypto = require('crypto')
 const config = require('../config')
 
 /**
- * Vérifie l'authentification de l'app desktop.
+ * Vérifie l'authentification de l'app desktop/mobile.
  * Supporte deux modes :
  *   1. HMAC signature (recommandé) : X-Timestamp + X-Signature headers
- *   2. API Key (rétrocompat) : X-API-Key header
+ *      Signe: METHOD\nPATH\nSHA256(body)\nTIMESTAMP
+ *   2. API Key (rétrocompat anciennes versions) : X-API-Key header
  */
 function apiKeyAuth(req, res, next) {
   const timestamp = req.headers['x-timestamp']
@@ -21,7 +22,14 @@ function apiKeyAuth(req, res, next) {
       return res.status(401).json({ error: 'Requête expirée ou timestamp invalide' })
     }
 
-    const expected = crypto.createHmac('sha256', config.apiSecret).update(timestamp).digest('hex')
+    // Reconstruire le message signé: METHOD\nPATH\nSHA256(body)\nTIMESTAMP
+    const method = req.method.toUpperCase()
+    const path = req.originalUrl.split('?')[0] // Remove query string
+    const bodyStr = req.body ? JSON.stringify(req.body) : ''
+    const bodyHash = crypto.createHash('sha256').update(bodyStr).digest('hex')
+    const message = `${method}\n${path}\n${bodyHash}\n${timestamp}`
+    const expected = crypto.createHmac('sha256', config.apiSecret).update(message).digest('hex')
+
     try {
       const sigBuf = Buffer.from(signature, 'hex')
       const expBuf = Buffer.from(expected, 'hex')
@@ -29,6 +37,17 @@ function apiKeyAuth(req, res, next) {
         return next()
       }
     } catch { /* invalid hex, fall through */ }
+
+    // Fallback: essayer l'ancien format (timestamp seul) pour rétrocompat temporaire
+    const legacyExpected = crypto.createHmac('sha256', config.apiSecret).update(timestamp).digest('hex')
+    try {
+      const sigBuf = Buffer.from(signature, 'hex')
+      const legBuf = Buffer.from(legacyExpected, 'hex')
+      if (sigBuf.length === legBuf.length && crypto.timingSafeEqual(sigBuf, legBuf)) {
+        return next()
+      }
+    } catch { /* invalid hex */ }
+
     return res.status(401).json({ error: 'Signature invalide' })
   }
 

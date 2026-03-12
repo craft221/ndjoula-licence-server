@@ -1,5 +1,6 @@
 const express = require('express')
 const cors = require('cors')
+const helmet = require('helmet')
 const fs = require('fs')
 const path = require('path')
 const config = require('./config')
@@ -11,6 +12,7 @@ const app = express()
 app.set('trust proxy', 1)
 
 // Middleware
+app.use(helmet())
 app.use(cors({
   origin: config.nodeEnv === 'production'
     ? [config.serverUrl]
